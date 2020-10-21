@@ -1,4 +1,5 @@
 EESchema Schematic File Version 4
+LIBS:servoDriver-cache
 EELAYER 30 0
 EELAYER END
 $Descr A4 11693 8268
@@ -169,7 +170,7 @@ U 1 1 5E9BFB26
 P 7750 2450
 F 0 "J6" H 7722 2332 50  0000 R CNN
 F 1 "SWD" H 7722 2423 50  0000 R CNN
-F 2 "Connector_PinHeader_1.00mm:PinHeader_1x04_P1.00mm_Vertical" H 7750 2450 50  0001 C CNN
+F 2 "Connector_PinHeader_1.27mm:PinHeader_1x04_P1.27mm_Vertical" H 7750 2450 50  0001 C CNN
 F 3 "~" H 7750 2450 50  0001 C CNN
 	1    7750 2450
 	-1   0    0    1   
@@ -249,7 +250,7 @@ Wire Wire Line
 Wire Wire Line
 	4350 3850 4350 4300
 Wire Wire Line
-	4350 4300 5700 4300
+	4350 4300 5300 4300
 Connection ~ 4350 3850
 Connection ~ 5700 4300
 $Comp
@@ -495,7 +496,7 @@ U 1 1 5EA52E19
 P 5850 5850
 F 0 "JP1" H 5850 6055 50  0000 C CNN
 F 1 "SolderJumper_2_Open" H 5850 5964 50  0000 C CNN
-F 2 "Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm" H 5850 5850 50  0001 C CNN
+F 2 "servoDriver:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm" H 5850 5850 50  0001 C CNN
 F 3 "~" H 5850 5850 50  0001 C CNN
 	1    5850 5850
 	1    0    0    -1  
@@ -506,7 +507,7 @@ U 1 1 5EA53FF8
 P 5850 6150
 F 0 "JP2" H 5850 6355 50  0000 C CNN
 F 1 "SolderJumper_2_Open" H 5850 6264 50  0000 C CNN
-F 2 "Jumper:SolderJumper-2_P1.3mm_Open_Pad1.0x1.5mm" H 5850 6150 50  0001 C CNN
+F 2 "servoDriver:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm" H 5850 6150 50  0001 C CNN
 F 3 "~" H 5850 6150 50  0001 C CNN
 	1    5850 6150
 	1    0    0    -1  
@@ -539,4 +540,9 @@ Wire Wire Line
 Connection ~ 6550 5350
 Wire Wire Line
 	6550 5350 6950 5350
+Wire Wire Line
+	5300 4050 5300 4300
+Connection ~ 5300 4300
+Wire Wire Line
+	5300 4300 5700 4300
 $EndSCHEMATC
