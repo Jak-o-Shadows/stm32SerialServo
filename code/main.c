@@ -45,27 +45,45 @@ uint16_t clocksPerMilliSecond = 9500;
 
 
 
+typedef struct {
+	uint32_t *durations;
+	uint16_t *lengths;
+	uint16_t *offsets;
+	uint32_t numElements;
+} Pointset;
 
-
-
-uint32_t durationCount = 0;
-
-uint32_t durations[] = {0, 701, 10, 10, 10, 10, 10, 9, 10, 9, 10, 10, 9, 10, 9, 10, 10, 9, 10, 9, 10, 10, 9, 10, 9, 10, 10, 9, 10, 9, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 10, 9, 10, 10, 10, 10, 9, 10, 10, 10, 10, 9, 10, 10, 10, 10, 9, 10, 10, 10, 10, 9, 10, 10, 10, 10, 9, 10, 10, 10, 10, 9, 10};
-
-uint16_t lengths[] = {0x0, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200};
-
-uint16_t offsets[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-
-
-uint32_t numElements = 77;
-uint16_t breakpointIndex = 0;
-
-
+typedef struct{
+	Pointset *data;
+	uint32_t durationCount;
+	uint32_t breakpointIndex;
+} PWMChannel;
 
 
 
 
 
+uint32_t durations[] = {0, 741, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 4, 1, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4, 5, 4};
+uint16_t lengths[] = {0x0, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0xd3, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x0, 0x19, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200, 0x0, 0x200};
+uint16_t offsets[] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+Pointset p = {
+	.durations = durations,
+	.lengths = lengths,
+	.offsets = offsets,
+	.numElements = 162
+};
+
+
+PWMChannel channelPointSets[] = {
+	[0].data = &p,
+	[0].durationCount = 0,
+	[0].breakpointIndex = 0,
+	[1].data = &p,
+	[1].durationCount = 0,
+	[1].breakpointIndex = 0,
+	[2].data = &p,
+	[2].durationCount = 0,
+	[2].breakpointIndex = 0
+};
 
 
 ////////////////////////////////////////////////////////
@@ -326,32 +344,35 @@ void tim3_isr(void){
 		// Working variables
 		uint16_t offset;
 		uint16_t length;
-		
-		
-		// Increment duration for this channel
-		durationCount++;
-		
-		// Change to a new value breakpoint?
-		if( durationCount >= durations[breakpointIndex] ){
-						
-			// Change index
-			breakpointIndex++;
-			if( breakpointIndex >= (numElements-1) ){
-				breakpointIndex = 0;
+		PWMChannel *channelData;
+
+		for( int i=0;i<3;i++){
+			// Increment duration for this channel
+			channelData = &channelPointSets[i];
+			channelData->durationCount++;
+
+			// Change to a new value breakpoint?
+			if( channelData->durationCount >= channelData->data->durations[channelData->breakpointIndex] ){
+
+				// Change index
+				channelData->breakpointIndex++;
+				if( channelData->breakpointIndex >= (channelData->data->numElements-1) ){
+					channelData->breakpointIndex = 0;
+				}
+				// Null duration Count
+				channelData->durationCount = 0;
+
+				// Get local copies of the value
+				offset = channelData->data->offsets[channelData->breakpointIndex];
+				length = channelData->data->lengths[channelData->breakpointIndex];
+
+				// Set
+				_cmdpos[i] = length;
+
 			}
-			// Null duration Count
-			durationCount = 0;
-			
-			// Get local copies of the value
-			offset = offsets[breakpointIndex];
-			length = lengths[breakpointIndex];
-
-			// Set
-			_cmdpos[0] = length;
-			_cmdpos[1] = length;
-			_cmdpos[2] = length;
-
 		}
+
+
 
 	}
 
