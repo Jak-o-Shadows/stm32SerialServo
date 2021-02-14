@@ -18,6 +18,7 @@
 //#include <stdio.h>	// For snprintf
 
 #include "serialServo/serialServoSlave.h"
+#include "serialServo/serialServoCommon.h"
 
 
 // Config Servos
@@ -49,6 +50,12 @@ static void clock_setup(void)
 {
 	rcc_clock_setup_in_hse_8mhz_out_48mhz();
 	//rcc_clock_setup_in_hsi_out_48mhz();
+	
+	// Set AHB prescaler and APB prescaler
+	//	Set no division, to give the most flexibility
+	//	in that the timer can have a prescaler
+	rcc_set_hpre(RCC_CFGR_HPRE_NODIV);
+	rcc_set_ppre(RCC_CFGR_PPRE_NODIV);
 
 	// GPIO
 	rcc_periph_clock_enable(RCC_GPIOA);
@@ -112,8 +119,8 @@ static void timer_setup(void)
 	timer_set_prescaler(TIM2, 4);
 	// Set to 50 Hz
 	//	48 MHz /4 = 12 MHz /50 Hz = 240,000 clock ticks
-	//	Note: /4 due to the prescaler
-	timer_set_period(TIM2, 190000);  // TODO: Determine why this doesn't quite work
+	//	Note: /4 due to the timer prescaler
+	timer_set_period(TIM2, 190000);  // TODO: Determine why this doesn't quite work (set to 190k)
 	// Enable continuous mode for repeat
 	timer_continuous_mode(TIM2);
 
@@ -150,9 +157,15 @@ static void timer_setup(void)
 }
 
 
-static uint16_t calcNumClocks(float ms){
+static uint16_t calcNumClocks(double ms){
 	uint16_t value = (uint16_t) (ms*clocksPerMilliSecond);
 	return value;
+}
+
+static double degreesToPulseLength_ms(double deg) {
+	// Low: 0.500 ms, -90 deg
+	// High: 2.200 ms, 90 deg
+	return 0.500 + deg*(2.200-0.500)/(90- -90);
 }
 
 ////////////////////////////////////////////////////////
@@ -205,10 +218,9 @@ int main(void)
 		for( int i=0; i<NUMSERVOS;i++){
 			_cmdpos[i] = cmdpos[i];
 		}
-		
-		timer_set_oc_value(TIM2, TIM_OC2, 25*_cmdpos[0]);
-		timer_set_oc_value(TIM2, TIM_OC3, 25*_cmdpos[1]);
-		timer_set_oc_value(TIM2, TIM_OC4, 25*_cmdpos[2]);
+		timer_set_oc_value(TIM2, TIM_OC2, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[0]))));
+		timer_set_oc_value(TIM2, TIM_OC3, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[1]))));
+		timer_set_oc_value(TIM2, TIM_OC4, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[2]))));
 		
 		
 		
