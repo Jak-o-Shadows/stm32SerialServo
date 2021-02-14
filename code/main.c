@@ -165,7 +165,11 @@ static uint16_t calcNumClocks(double ms){
 static double degreesToPulseLength_ms(double deg) {
 	// Low: 0.500 ms, -90 deg
 	// High: 2.200 ms, 90 deg
-	return 0.500 + deg*(2.200-0.500)/(90- -90);
+	if( deg != 0 ){
+		return 0.500 + deg*(2.200-0.500)/(90- -90);
+	} else {
+		return 0.0;
+	}
 }
 
 ////////////////////////////////////////////////////////
