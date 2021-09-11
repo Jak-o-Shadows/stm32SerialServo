@@ -20,6 +20,26 @@
 #include "serialServo/serialServoSlave.h"
 #include "serialServo/serialServoCommon.h"
 
+// Datatype for the sequence patterns
+typedef struct Command {
+	uint32_t time_ms;
+	uint8_t channel;
+	uint8_t brightness;
+	uint32_t time_on_ms;
+	uint32_t time_off_ms;
+} Command;
+
+static const Command sequence[] = {
+	{0,     		0, 0x7F, 500, 500},
+	{0,     		1, 0x7F, 500, 500},
+	{0,     		2, 0x7F, 500, 500},
+	{0,     		3, 0x7F, 500, 500},
+	{3000,     		0, 0x7F, 500, 250},
+	{3000,     		1, 0x7F, 500, 250},
+	{3000,     		2, 0x7F, 500, 250},
+	{3000,     		3, 0x7F, 500, 250}
+};
+uint32_t sequence_length = 8;
 
 // Config Servos
 #define NUMSERVOS 4
@@ -39,6 +59,10 @@ static uint16_t cachepos[NUMSERVOS];
 static uint16_t cmdpos[NUMSERVOS];
 static uint16_t _cmdpos[NUMSERVOS];
 static uint8_t listen[NUMSERVOS];
+
+static Command* channel_current_command[NUMSERVOS];
+static uint32_t channel_state_time_ms[NUMSERVOS];
+static bool channel_state[NUMSERVOS];
 
 
 uint16_t clocksPerMilliSecond = 9500;
@@ -65,6 +89,8 @@ static void clock_setup(void)
 	rcc_periph_clock_enable(RCC_TIM2);
 	// Timer3 for PWM 4
 	rcc_periph_clock_enable(RCC_TIM3);
+	// Timer14 for sequence updator
+	rcc_periph_clock_enable(RCC_TIM14);
 	
 	// USART1
 	rcc_periph_clock_enable(RCC_USART1);
@@ -95,6 +121,11 @@ static void gpio_setup(void)
 	gpio_set_af(GPIOA, GPIO_AF2, GPIO1 | GPIO2 | GPIO3);
 	// Set alternate function for TIM3 OC Channel 1 (PA6)
 	gpio_set_af(GPIOA, GPIO_AF1, GPIO6);
+
+	// Use as debug
+	//gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO6);
+	//gpio_set_output_options(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_HIGH, GPIO6);
+
 	
 	// USART 1
 	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO10);
@@ -106,10 +137,18 @@ static void gpio_setup(void)
 static void nvic_setup(void)
 {
 	nvic_enable_irq(NVIC_USART1_IRQ);
+	nvic_enable_irq(NVIC_TIM14_IRQ);
 }
 
 static void timer_setup(void)
 {
+
+	// PWM channel config values
+	// Set to 50 Hz
+	//	48 MHz /4 = 12 MHz /50 Hz = 240,000 clock ticks
+	//	Note: /4 due to the timer prescaler
+	const uint8_t pwm_prescaler = 4;
+	const uint16_t pwm_period = 255;
 
 	// Configure TIM 2, with channels 1, 2, 3 for PWM 1, 2, 3
 	//	This does the pulse widths for each channel
@@ -122,11 +161,8 @@ static void timer_setup(void)
 	//	Must use a prescaler, as want to capture 3 ms in a uint16_t
 	//	1/((3e-3)/(2^16)) = ~22 MHz max clock speed
 	//	Therefore just pick a prescaler of 4
-	timer_set_prescaler(TIM2, 4);
-	// Set to 50 Hz
-	//	48 MHz /4 = 12 MHz /50 Hz = 240,000 clock ticks
-	//	Note: /4 due to the timer prescaler
-	timer_set_period(TIM2, 190000);  // TODO: Determine why this doesn't quite work (set to 190k)
+	timer_set_prescaler(TIM2, pwm_prescaler);
+	timer_set_period(TIM2, pwm_period);  // TODO: Determine why this doesn't quite work (set to 190k)
 	// Enable continuous mode for repeat
 	timer_continuous_mode(TIM2);
 
@@ -154,7 +190,7 @@ static void timer_setup(void)
 	
 
 	// Setup TIM3 for PWM4 on CH1
-	timer_disable_counter(TIM3);
+ 	timer_disable_counter(TIM3);
 	timer_set_mode(TIM3, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
 
 	// ???????????
@@ -163,11 +199,8 @@ static void timer_setup(void)
 	//	Must use a prescaler, as want to capture 3 ms in a uint16_t
 	//	1/((3e-3)/(2^16)) = ~22 MHz max clock speed
 	//	Therefore just pick a prescaler of 4
-	timer_set_prescaler(TIM3, 4);
-	// Set to 50 Hz
-	//	48 MHz /4 = 12 MHz /50 Hz = 240,000 clock ticks
-	//	Note: /4 due to the timer prescaler
-	timer_set_period(TIM3, 190000);  // TODO: Determine why this doesn't quite work (set to 190k)
+	timer_set_prescaler(TIM3, pwm_prescaler);
+	timer_set_period(TIM3, pwm_period);
 	// Enable continuous mode for repeat
 	timer_continuous_mode(TIM3);
 
@@ -184,13 +217,27 @@ static void timer_setup(void)
 	timer_enable_oc_output(TIM3, TIM_OC1);
 
 
-	// Start Both
+	// Start Both PWM channels
 	timer_generate_event(TIM2, TIM_EGR_UG);
 	timer_generate_event(TIM3, TIM_EGR_UG);
 	timer_enable_counter(TIM2);
 	timer_enable_counter(TIM3);
 	
 	
+	// Setup TIM14 as a general "update" timer
+	timer_disable_counter(TIM14);
+	timer_set_mode(TIM14, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
+	timer_set_prescaler(TIM14, ((rcc_apb1_frequency)/10000));
+
+	// Count the full range, as the compare value is used to set the value
+	timer_set_period(TIM14, 65535);
+	
+	timer_set_oc_value(TIM14, TIM_OC1, 10); //was 10000
+	
+	timer_enable_counter(TIM14);
+	
+	timer_enable_irq(TIM14, TIM_DIER_CC1IE);
+	timer_enable_counter(TIM14);
 	
 
 }
@@ -224,13 +271,11 @@ int main(void)
 	{
 		// Set the hidden and commanded values to different,
 		//	so that it automatically gets set.
-		cmdpos[i] = 20000;//calcNumClocks(0);
-		_cmdpos[i] = 20000;
+		cmdpos[i] = 0;//calcNumClocks(0);
+		_cmdpos[i] = 0;
 	}
 	// Initialise the serial servo controller
 	serialServoSlave_setup(&cmdpos, &cachepos, &listen, NUMSERVOS, &SERVOADDRESSES);
-
-
 
 	//other
 	clock_setup();
@@ -241,12 +286,7 @@ int main(void)
 	// Enable interrupts
 	nvic_setup();
 
-	gpio_clear(GPIOA, GPIO1 | GPIO2 | GPIO3);
-	
-		
-	
-	int c = 0;
-	int j = 0;
+	gpio_clear(GPIOA, GPIO1 | GPIO2 | GPIO3 | GPIO6);
 	
 	
 	while (1)
@@ -254,20 +294,18 @@ int main(void)
 		// Update position to servos every x time
 		
 		
-		for (int i=0; i<1000000/4; i++){
+		for (int i=0; i<1000000/6; i++){
 			__asm__("nop");
 		}
 		
 		for( int i=0; i<NUMSERVOS;i++){
 			_cmdpos[i] = cmdpos[i];
 		}
-		timer_set_oc_value(TIM2, TIM_OC2, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[0]))));
-		timer_set_oc_value(TIM2, TIM_OC3, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[1]))));
-		timer_set_oc_value(TIM2, TIM_OC4, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[2]))));
-		timer_set_oc_value(TIM3, TIM_OC1, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[3]))));
-
-		
-		
+		timer_set_oc_value(TIM2, TIM_OC2, _cmdpos[0]);
+		timer_set_oc_value(TIM2, TIM_OC3, _cmdpos[1]);
+		timer_set_oc_value(TIM2, TIM_OC4, _cmdpos[2]);
+		timer_set_oc_value(TIM3, TIM_OC1, _cmdpos[3]);
+		//gpio_toggle(GPIOA, GPIO6);
 		
 	}
 
@@ -294,3 +332,73 @@ void usart1_isr(void)
 
 	}
 }
+
+// This timer is used to update the sequence state
+void tim14_isr(void) {
+
+	static uint32_t sequence_idx = 0;
+	static uint64_t time_ms = 0;
+
+	static Command *command;
+	static Command *nextCommand;
+	if (time_ms == 0) {
+		nextCommand = &sequence[sequence_idx+1];
+	}
+
+	if (timer_get_flag(TIM14, TIM_SR_CC1IF)) {
+		timer_clear_flag(TIM14, TIM_SR_CC1IF);
+
+		// Setup next compare time
+		uint16_t compare_time = timer_get_counter(TIM14);
+		timer_set_oc_value(TIM14, TIM_OC1, 10 + compare_time);
+
+		time_ms++;
+
+		while(( nextCommand->time_ms < time_ms ) && (sequence_idx < (sequence_length)) ){
+
+			channel_current_command[nextCommand->channel] = nextCommand;
+			channel_state_time_ms[nextCommand->channel] = 0;
+			channel_state[nextCommand->channel] = true;
+			cmdpos[nextCommand->channel] = nextCommand->brightness;
+
+			// Move to next command
+			if( sequence_idx < (sequence_length-1) ){
+				sequence_idx++;
+				nextCommand = &sequence[sequence_idx];
+			} else {
+				nextCommand = &sequence[sequence_idx];
+				sequence_idx++; // tick it over so it doesn't run again
+				break;
+			}
+		}
+
+		for (int pwm_idx=0;pwm_idx<NUMSERVOS;pwm_idx++) {
+
+			command = channel_current_command[pwm_idx];
+
+			// Set the twinkle state
+			channel_state_time_ms[pwm_idx]++;
+			if( channel_state[pwm_idx] ){
+				// We are in the on phase
+				if( channel_state_time_ms[pwm_idx]>command->time_on_ms ){
+					// Switch to off phase
+					channel_state_time_ms[pwm_idx] = 0;
+					channel_state[pwm_idx] = false;
+					cmdpos[pwm_idx] = 0;
+				}
+			} else {
+				// We are in the off phase
+				if( channel_state_time_ms[pwm_idx]>command->time_off_ms ){
+					// Switch to off phase
+					channel_state_time_ms[pwm_idx] = 0;
+					channel_state[pwm_idx] = true;
+					cmdpos[pwm_idx] = command->brightness;
+				}
+			}
+
+		}
+
+	}
+
+}
+
