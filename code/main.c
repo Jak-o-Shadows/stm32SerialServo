@@ -22,12 +22,13 @@
 
 
 // Config Servos
-#define NUMSERVOS 3
+#define NUMSERVOS 4
 #define IDOFF 0
 
 const uint8_t SERVOADDRESSES[] = {0 + IDOFF,
 								  1 + IDOFF,
-								  2 + IDOFF};
+								  2 + IDOFF,
+								  3 + IDOFF};
 
 
 
@@ -60,8 +61,10 @@ static void clock_setup(void)
 	// GPIO
 	rcc_periph_clock_enable(RCC_GPIOA);
 	
-	// Timer2 for PWM
+	// Timer2 for PWM 1, 2, 3
 	rcc_periph_clock_enable(RCC_TIM2);
+	// Timer3 for PWM 4
+	rcc_periph_clock_enable(RCC_TIM3);
 	
 	// USART1
 	rcc_periph_clock_enable(RCC_USART1);
@@ -86,10 +89,12 @@ static void usart_setup(void)
 static void gpio_setup(void)
 {
 	// PWM pins
-	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO1 | GPIO2 | GPIO3);
-	gpio_set_output_options(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_HIGH, GPIO1 | GPIO2 | GPIO3);
-	// Set alternate functions for TIM2 OC channels 2(GPIO1), 3(GPIO2), 4(GPIO3)
+	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO1 | GPIO2 | GPIO3 | GPIO6);
+	gpio_set_output_options(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_HIGH, GPIO1 | GPIO2 | GPIO3 | GPIO6);
+	// Set alternate functions for TIM2 OC channels 2(PA1), 3(PA2), 4(PA3)
 	gpio_set_af(GPIOA, GPIO_AF2, GPIO1 | GPIO2 | GPIO3);
+	// Set alternate function for TIM3 OC Channel 1 (PA6)
+	gpio_set_af(GPIOA, GPIO_AF1, GPIO6);
 	
 	// USART 1
 	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO10);
@@ -106,7 +111,8 @@ static void nvic_setup(void)
 static void timer_setup(void)
 {
 
-	// Configure TIM 2, with all the channels. This does the pulse widths for each channel
+	// Configure TIM 2, with channels 1, 2, 3 for PWM 1, 2, 3
+	//	This does the pulse widths for each channel
 	timer_disable_counter(TIM2);
 	timer_set_mode(TIM2, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
 
@@ -124,7 +130,6 @@ static void timer_setup(void)
 	// Enable continuous mode for repeat
 	timer_continuous_mode(TIM2);
 
-	
 	// Configure the channels
 	//	Put into PWM mode
 	timer_set_oc_mode(TIM2, TIM_OC2, TIM_OCM_PWM1);
@@ -147,9 +152,43 @@ static void timer_setup(void)
 	timer_enable_oc_output(TIM2, TIM_OC3);
 	timer_enable_oc_output(TIM2, TIM_OC4);
 	
-	// Start
+
+	// Setup TIM3 for PWM4 on CH1
+	timer_disable_counter(TIM3);
+	timer_set_mode(TIM3, TIM_CR1_CKD_CK_INT, TIM_CR1_CMS_EDGE, TIM_CR1_DIR_UP);
+
+	// ???????????
+	timer_disable_preload(TIM3);
+	// Set prescaler
+	//	Must use a prescaler, as want to capture 3 ms in a uint16_t
+	//	1/((3e-3)/(2^16)) = ~22 MHz max clock speed
+	//	Therefore just pick a prescaler of 4
+	timer_set_prescaler(TIM3, 4);
+	// Set to 50 Hz
+	//	48 MHz /4 = 12 MHz /50 Hz = 240,000 clock ticks
+	//	Note: /4 due to the timer prescaler
+	timer_set_period(TIM3, 190000);  // TODO: Determine why this doesn't quite work (set to 190k)
+	// Enable continuous mode for repeat
+	timer_continuous_mode(TIM3);
+
+	// Configure the channels
+	//	Put into PWM mode
+	timer_set_oc_mode(TIM3, TIM_OC1, TIM_OCM_PWM1);
+	// Enable auto-preload
+	timer_enable_oc_preload(TIM3, TIM_OC1);
+	//	Put fast mode to speed up transitions
+	timer_set_oc_fast_mode(TIM3, TIM_OC1);
+	// Set specific OC values for duration
+	timer_set_oc_value(TIM3, TIM_OC1, _cmdpos[4]);
+	// Set it to actually do it
+	timer_enable_oc_output(TIM3, TIM_OC1);
+
+
+	// Start Both
 	timer_generate_event(TIM2, TIM_EGR_UG);
+	timer_generate_event(TIM3, TIM_EGR_UG);
 	timer_enable_counter(TIM2);
+	timer_enable_counter(TIM3);
 	
 	
 	
@@ -185,8 +224,8 @@ int main(void)
 	{
 		// Set the hidden and commanded values to different,
 		//	so that it automatically gets set.
-		cmdpos[i] = calcNumClocks(0);
-		_cmdpos[i] = 0;
+		cmdpos[i] = 20000;//calcNumClocks(0);
+		_cmdpos[i] = 20000;
 	}
 	// Initialise the serial servo controller
 	serialServoSlave_setup(&cmdpos, &cachepos, &listen, NUMSERVOS, &SERVOADDRESSES);
@@ -225,7 +264,8 @@ int main(void)
 		timer_set_oc_value(TIM2, TIM_OC2, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[0]))));
 		timer_set_oc_value(TIM2, TIM_OC3, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[1]))));
 		timer_set_oc_value(TIM2, TIM_OC4, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[2]))));
-		
+		timer_set_oc_value(TIM3, TIM_OC1, calcNumClocks(degreesToPulseLength_ms(serialServoCountToDegrees(_cmdpos[3]))));
+
 		
 		
 		
