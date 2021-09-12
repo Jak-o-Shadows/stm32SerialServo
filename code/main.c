@@ -1,45 +1,36 @@
 #include <libopencm3/stm32/rcc.h>
 #include <libopencm3/stm32/gpio.h>
-//#include <libopencm3/stm32/rtc.h>
 #include <libopencm3/stm32/usart.h>
-//#include <libopencm3/stm32/pwr.h>
 #include <libopencm3/cm3/nvic.h>
 #include <libopencm3/stm32/timer.h>
-//#include <libopencm3/stm32/dac.h>
-//#include <libopencm3/stm32/dma.h>
 
 #include <libopencm3/stm32/syscfg.h>
-
-
-
 #include "stdint.h"
-//#include "stdbool.h"
-//#include <string.h> //For memcpy
-//#include <stdio.h>	// For snprintf
 
-#include "serialServo/serialServoSlave.h"
-#include "serialServo/serialServoCommon.h"
 
 // Datatype for the sequence patterns
 typedef struct Command {
 	uint32_t time_ms;
 	uint8_t channel;
 	uint8_t brightness;
+	bool initial_on;
 	uint32_t time_on_ms;
 	uint32_t time_off_ms;
 } Command;
 
 static const Command sequence[] = {
-	{0,     		0, 0x7F, 500, 500},
-	{0,     		1, 0x7F, 500, 500},
-	{0,     		2, 0x7F, 500, 500},
-	{0,     		3, 0x7F, 500, 500},
-	{3000,     		0, 0x7F, 500, 250},
-	{3000,     		1, 0x7F, 500, 250},
-	{3000,     		2, 0x7F, 500, 250},
-	{3000,     		3, 0x7F, 500, 250}
+	{0,			    0, 0x00, true,  1, 1},  // Dummy row
+	{2,     		0, 255, false, 1000, 1000},
+	{2,     		1, 255, true,  1000, 1000},
+	{2,     		2, 255, false, 1000, 1000},
+	{2,     		3, 255, true,  1000, 1000},
+	{8000,     		0, 255, true,  1000, 500},
+	{8000,     		1, 255, true,  500, 1000},
+	{8000,     		2, 255, true,  2000, 2000},
+	{8000,     		3, 255, false, 2000, 2000},
+	{16000, 		0, 0x00, true,  1, 1}  // Dummy row at end to mark restart
 };
-uint32_t sequence_length = 8;
+uint32_t sequence_length = 10;
 
 // Config Servos
 #define NUMSERVOS 4
@@ -50,11 +41,7 @@ const uint8_t SERVOADDRESSES[] = {0 + IDOFF,
 								  2 + IDOFF,
 								  3 + IDOFF};
 
-
-
-
 // Variables
-
 static uint16_t cachepos[NUMSERVOS];
 static uint16_t cmdpos[NUMSERVOS];
 static uint16_t _cmdpos[NUMSERVOS];
@@ -63,9 +50,6 @@ static uint8_t listen[NUMSERVOS];
 static Command* channel_current_command[NUMSERVOS];
 static uint32_t channel_state_time_ms[NUMSERVOS];
 static bool channel_state[NUMSERVOS];
-
-
-uint16_t clocksPerMilliSecond = 9500;
 
 ////////////////////////////////////////////////////////
 ///////////////////uC setup/////////////////////////////
@@ -121,11 +105,6 @@ static void gpio_setup(void)
 	gpio_set_af(GPIOA, GPIO_AF2, GPIO1 | GPIO2 | GPIO3);
 	// Set alternate function for TIM3 OC Channel 1 (PA6)
 	gpio_set_af(GPIOA, GPIO_AF1, GPIO6);
-
-	// Use as debug
-	//gpio_mode_setup(GPIOA, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, GPIO6);
-	//gpio_set_output_options(GPIOA, GPIO_OTYPE_PP, GPIO_OSPEED_HIGH, GPIO6);
-
 	
 	// USART 1
 	gpio_mode_setup(GPIOA, GPIO_MODE_AF, GPIO_PUPD_NONE, GPIO10);
@@ -144,6 +123,10 @@ static void timer_setup(void)
 {
 
 	// PWM channel config values
+		// Set prescaler
+	//	Must use a prescaler, as want to capture 3 ms in a uint16_t
+	//	1/((3e-3)/(2^16)) = ~22 MHz max clock speed
+	//	Therefore just pick a prescaler of 4
 	// Set to 50 Hz
 	//	48 MHz /4 = 12 MHz /50 Hz = 240,000 clock ticks
 	//	Note: /4 due to the timer prescaler
@@ -158,9 +141,6 @@ static void timer_setup(void)
 	// ???????????
 	timer_disable_preload(TIM2);
 	// Set prescaler
-	//	Must use a prescaler, as want to capture 3 ms in a uint16_t
-	//	1/((3e-3)/(2^16)) = ~22 MHz max clock speed
-	//	Therefore just pick a prescaler of 4
 	timer_set_prescaler(TIM2, pwm_prescaler);
 	timer_set_period(TIM2, pwm_period);  // TODO: Determine why this doesn't quite work (set to 190k)
 	// Enable continuous mode for repeat
@@ -195,10 +175,6 @@ static void timer_setup(void)
 
 	// ???????????
 	timer_disable_preload(TIM3);
-	// Set prescaler
-	//	Must use a prescaler, as want to capture 3 ms in a uint16_t
-	//	1/((3e-3)/(2^16)) = ~22 MHz max clock speed
-	//	Therefore just pick a prescaler of 4
 	timer_set_prescaler(TIM3, pwm_prescaler);
 	timer_set_period(TIM3, pwm_period);
 	// Enable continuous mode for repeat
@@ -243,21 +219,6 @@ static void timer_setup(void)
 }
 
 
-static uint16_t calcNumClocks(double ms){
-	uint16_t value = (uint16_t) (ms*clocksPerMilliSecond);
-	return value;
-}
-
-static double degreesToPulseLength_ms(double deg) {
-	// Low: 0.500 ms, -90 deg
-	// High: 2.200 ms, 90 deg
-	if( deg != 0 ){
-		return 0.500 + deg*(2.200-0.500)/(90- -90);
-	} else {
-		return 0.0;
-	}
-}
-
 ////////////////////////////////////////////////////////
 //////////////main//////////////////////////////////////
 ////////////////////////////////////////////////////////
@@ -266,16 +227,12 @@ int main(void)
 {
 	
 	
-	// Manually command the servos
+	// initialise the PWM signal
 	for (int i = 0; i < NUMSERVOS; i++)
 	{
-		// Set the hidden and commanded values to different,
-		//	so that it automatically gets set.
 		cmdpos[i] = 0;//calcNumClocks(0);
 		_cmdpos[i] = 0;
 	}
-	// Initialise the serial servo controller
-	serialServoSlave_setup(&cmdpos, &cachepos, &listen, NUMSERVOS, &SERVOADDRESSES);
 
 	//other
 	clock_setup();
@@ -288,11 +245,9 @@ int main(void)
 
 	gpio_clear(GPIOA, GPIO1 | GPIO2 | GPIO3 | GPIO6);
 	
-	
 	while (1)
 	{
 		// Update position to servos every x time
-		
 		
 		for (int i=0; i<1000000/6; i++){
 			__asm__("nop");
@@ -305,15 +260,11 @@ int main(void)
 		timer_set_oc_value(TIM2, TIM_OC3, _cmdpos[1]);
 		timer_set_oc_value(TIM2, TIM_OC4, _cmdpos[2]);
 		timer_set_oc_value(TIM3, TIM_OC1, _cmdpos[3]);
-		//gpio_toggle(GPIOA, GPIO6);
-		
+	
 	}
-
 
 	return 0;
 }
-
-
 
 
 void usart1_isr(void)
@@ -323,13 +274,8 @@ void usart1_isr(void)
 	
 	if( usart_get_flag(USART1, USART_ISR_RXNE) )
 	{
-
-		// Receieve the data, using the MiniSSC protocol
-		//	This protocol has a header byte (0xFF), followed
-		//	by a number (0->254) followed by a number (0-254)
+		// Receieve the data
 		rxData = usart_recv(USART1);
-		reply = serialServoSlave_dobyte(rxData);
-
 	}
 }
 
@@ -358,16 +304,25 @@ void tim14_isr(void) {
 
 			channel_current_command[nextCommand->channel] = nextCommand;
 			channel_state_time_ms[nextCommand->channel] = 0;
-			channel_state[nextCommand->channel] = true;
-			cmdpos[nextCommand->channel] = nextCommand->brightness;
+			if( nextCommand->initial_on ){
+				channel_state[nextCommand->channel] = true;
+				cmdpos[nextCommand->channel] = nextCommand->brightness;
+			} else {
+				channel_state[nextCommand->channel] = false;
+				cmdpos[nextCommand->channel] = 0;
+			}
 
 			// Move to next command
 			if( sequence_idx < (sequence_length-1) ){
 				sequence_idx++;
 				nextCommand = &sequence[sequence_idx];
 			} else {
+				//nextCommand = &sequence[sequence_idx];
+				//sequence_idx++; // tick it over so it doesn't run again & stays at the last command
+				//reset to start
+				sequence_idx = 0;
+				time_ms = 0;
 				nextCommand = &sequence[sequence_idx];
-				sequence_idx++; // tick it over so it doesn't run again
 				break;
 			}
 		}
@@ -395,8 +350,8 @@ void tim14_isr(void) {
 					cmdpos[pwm_idx] = command->brightness;
 				}
 			}
-
 		}
+
 
 	}
 
