@@ -18,6 +18,8 @@ typedef struct Command {
 	uint32_t time_off_ms;
 } Command;
 
+
+/*
 static const Command sequence[] = {
 	{0,			    0, 0x00, true,  1, 1},  // Dummy row
 	{2,     		0, 255, false, 1000, 1000},
@@ -31,6 +33,32 @@ static const Command sequence[] = {
 	{16000, 		0, 0x00, true,  1, 1}  // Dummy row at end to mark restart
 };
 uint32_t sequence_length = 10;
+*/
+
+static const Command sequence[] = {
+	{0,			    0, 0x02, true,  1, 1},  // Dummy row
+	{2,     		2, 0x02, true, 1000, 1000},  // 2 off
+	{2,     		0, 0xFF, true, 1000, 1000},  // 0 on
+
+	{500,     		3, 0x02, true, 1000, 1000},  // 3 off
+	{500,     		0, 0x1f, true, 1000, 1000},  // 0 dim
+	{500,     		1, 0xFF, true, 1000, 1000},  // 1 on
+
+	{1000,     		1, 0x1f, true, 1000, 1000},  // 1 dim
+	{1000,     		0, 0x02, true, 1000, 1000},  // 0 off
+	{1000,     		2, 0xFF, true, 1000, 1000},  // 2 on
+
+	{1500,     		2, 0x1f, true, 1000, 1000},  // 2 dim
+	{1000,     		1, 0x02, true, 1000, 1000},  // 1 off
+	{1500,     		3, 0xFF, true, 1000, 1000},  // 3 on
+
+	{2000,     		3, 0x1f, true, 1000, 1000},  // 3 dim
+};
+uint32_t sequence_length = 13;
+
+
+
+
 
 // Config Servos
 #define NUMSERVOS 4
